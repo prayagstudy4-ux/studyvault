@@ -102,6 +102,8 @@ export function friendlyError(err: unknown, fallback: string): string {
     return "An item with that name already exists here.";
   if (msg.includes("failed to fetch") || msg.includes("network"))
     return "Network error. Please check your connection and try again.";
+  if (msg.includes("does not exist") || msg.includes("schema cache"))
+    return "The StudyVault database isn't set up yet. Run supabase/migrations/001_studyvault.sql in your Supabase SQL editor (see README), then try again.";
   if (msg.includes("not found")) return "This item no longer exists.";
   return raw ? fallback : fallback;
 }
