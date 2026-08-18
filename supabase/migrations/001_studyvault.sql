@@ -1,9 +1,16 @@
 -- ============================================================================
--- StudyVault — initial migration
--- Tables, indexes, RLS policies, private storage bucket + policies,
--- helper functions and realtime publication.
+-- StudyVault — initial migration (idempotent, production-safe)
 --
--- Run this ONCE in the Supabase SQL editor (or via `supabase db push`).
+-- Creates: tables, indexes, RLS policies, security-definer helper functions,
+-- the private `studyvault` storage bucket + storage policies, and the
+-- Realtime publication.
+--
+-- SAFE TO RE-RUN: every statement tolerates an existing database. If you
+-- already ran an older copy of this file, running this version upgrades it.
+--
+-- It also BACKFILLS profiles for users that already exist in auth.users
+-- (e.g. accounts created before this migration ran). No duplicates are
+-- ever created (ON CONFLICT (id) DO NOTHING).
 -- ============================================================================
 
 create extension if not exists pgcrypto;
@@ -89,12 +96,12 @@ create table if not exists public.activity_logs (
 );
 
 -- ----------------------------------------------------------------------------
--- 2. Indexes
+-- 2. Indexes + constraints
 -- ----------------------------------------------------------------------------
 
 create index if not exists folders_workspace_idx on public.folders (workspace_id);
 create index if not exists folders_parent_idx on public.folders (parent_folder_id);
-create index if not exists folders_name_trgm_idx on public.folders (name);
+create index if not exists folders_name_idx on public.folders (name);
 create index if not exists folders_deleted_idx on public.folders (workspace_id, deleted_at);
 
 create index if not exists files_workspace_idx on public.files (workspace_id);
@@ -108,8 +115,15 @@ create index if not exists members_user_idx on public.workspace_members (user_id
 create index if not exists stars_user_idx on public.stars (user_id);
 create index if not exists activity_workspace_idx on public.activity_logs (workspace_id, created_at desc);
 
+-- one star per user per file / per folder (NULLs excluded, so the two kinds
+-- don't collide with each other)
+create unique index if not exists stars_user_file_uk
+  on public.stars (user_id, file_id) where file_id is not null;
+create unique index if not exists stars_user_folder_uk
+  on public.stars (user_id, folder_id) where folder_id is not null;
+
 -- ----------------------------------------------------------------------------
--- 3. Profile auto-provisioning (display name comes from signup metadata)
+-- 3. Profile auto-provisioning + backfill for pre-existing users
 -- ----------------------------------------------------------------------------
 
 create or replace function public.handle_new_user()
@@ -123,7 +137,7 @@ begin
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1))
+    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(coalesce(new.email, ''), '@', 1))
   )
   on conflict (id) do nothing;
   return new;
@@ -134,6 +148,45 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- Backfill: any user that already exists in auth.users but has no profile yet
+-- gets one now. Idempotent — never creates duplicates.
+insert into public.profiles (id, email, display_name)
+select
+  u.id,
+  coalesce(u.email, ''),
+  coalesce(u.raw_user_meta_data ->> 'display_name', split_part(coalesce(u.email, ''), '@', 1))
+from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+on conflict (id) do nothing;
+
+-- Self-heal: returns the caller's profile, creating it if it is missing.
+-- Used by the app right after sign-in so nobody is stranded without a profile.
+create or replace function public.ensure_profile()
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result public.profiles;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be signed in.';
+  end if;
+  insert into public.profiles (id, email, display_name)
+  select u.id, coalesce(u.email, ''),
+         coalesce(u.raw_user_meta_data ->> 'display_name', split_part(coalesce(u.email, ''), '@', 1))
+  from auth.users u
+  where u.id = auth.uid()
+  on conflict (id) do nothing;
+
+  select * into result from public.profiles where id = auth.uid();
+  return result;
+end;
+$$;
+
+grant execute on function public.ensure_profile() to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 4. Membership helpers (security definer avoids RLS recursion)
@@ -164,8 +217,8 @@ as $$
   limit 1;
 $$;
 
--- Path-safe check for storage policies: the first path segment must be a
--- workspace UUID the caller belongs to.
+-- Storage policy helpers: the first path segment must be a workspace UUID the
+-- caller belongs to. Write helpers additionally require owner/editor role.
 create or replace function public.can_access_storage_path(p text)
 returns boolean
 language plpgsql
@@ -185,12 +238,69 @@ begin
 end;
 $$;
 
+create or replace function public.can_write_storage_path(p text)
+returns boolean
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  ws uuid;
+begin
+  begin
+    ws := split_part(p, '/', 1)::uuid;
+  exception when others then
+    return false;
+  end;
+  return public.is_ws_member(ws)
+     and coalesce(public.ws_role_of(ws), 'viewer') in ('owner', 'editor');
+end;
+$$;
+
 grant execute on function public.is_ws_member(uuid) to authenticated;
 grant execute on function public.ws_role_of(uuid) to authenticated;
 grant execute on function public.can_access_storage_path(text) to authenticated;
+grant execute on function public.can_write_storage_path(text) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 5. Row Level Security
+-- 5. Atomic workspace creation (workspace + owner membership, one transaction)
+-- ----------------------------------------------------------------------------
+
+create or replace function public.create_workspace(ws_name text, ws_description text default '')
+returns public.workspaces
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ws public.workspaces;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be signed in to create a workspace.';
+  end if;
+  if ws_name is null or char_length(trim(ws_name)) < 1 then
+    raise exception 'Workspace name cannot be empty.';
+  end if;
+  if char_length(trim(ws_name)) > 80 then
+    raise exception 'Workspace name is too long (max 80 characters).';
+  end if;
+
+  insert into public.workspaces (name, description, created_by)
+  values (trim(ws_name), nullif(trim(coalesce(ws_description, '')), ''), auth.uid())
+  returning * into ws;
+
+  insert into public.workspace_members (workspace_id, user_id, role)
+  values (ws.id, auth.uid(), 'owner');
+
+  return ws;
+end;
+$$;
+
+grant execute on function public.create_workspace(text, text) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 6. Row Level Security
 -- ----------------------------------------------------------------------------
 
 alter table public.profiles enable row level security;
@@ -201,49 +311,75 @@ alter table public.files enable row level security;
 alter table public.stars enable row level security;
 alter table public.activity_logs enable row level security;
 
--- profiles: own row only
+-- profiles: own row only (creation happens via trigger / ensure_profile)
+drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles
   for select to authenticated using (id = auth.uid());
+drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles
   for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
 
--- workspaces: visible to members; any authenticated user may create one
+-- workspaces: visible to members; creators become the owner atomically via RPC
+drop policy if exists "workspaces_select_member" on public.workspaces;
 create policy "workspaces_select_member" on public.workspaces
   for select to authenticated using (public.is_ws_member(id));
+drop policy if exists "workspaces_insert_auth" on public.workspaces;
 create policy "workspaces_insert_auth" on public.workspaces
-  for insert to authenticated with check (auth.uid() is not null);
+  for insert to authenticated with check (auth.uid() is not null and created_by = auth.uid());
+drop policy if exists "workspaces_update_owner" on public.workspaces;
 create policy "workspaces_update_owner" on public.workspaces
   for update to authenticated
   using (public.ws_role_of(id) = 'owner')
   with check (public.ws_role_of(id) = 'owner');
 
--- workspace_members: members see each other; a user may add only themself
--- (owner-inviting-others happens through the definer function below)
+-- workspace_members: members see each other. No client insert/update/delete —
+-- membership changes only happen through definer functions (invite).
+drop policy if exists "members_select_member" on public.workspace_members;
 create policy "members_select_member" on public.workspace_members
   for select to authenticated using (public.is_ws_member(workspace_id));
-create policy "members_insert_self" on public.workspace_members
-  for insert to authenticated with check (user_id = auth.uid());
 
--- folders: members read; editors/owner write
+-- folders: members read; owner/editor write; parent must stay in the workspace
+drop policy if exists "folders_select_member" on public.folders;
 create policy "folders_select_member" on public.folders
   for select to authenticated using (public.is_ws_member(workspace_id));
+drop policy if exists "folders_insert_editor" on public.folders;
 create policy "folders_insert_editor" on public.folders
   for insert to authenticated
   with check (
     public.is_ws_member(workspace_id)
     and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor')
+    and (
+      parent_folder_id is null
+      or exists (
+        select 1 from public.folders pf
+        where pf.id = parent_folder_id and pf.workspace_id = folders.workspace_id
+      )
+    )
   );
+drop policy if exists "folders_update_editor" on public.folders;
 create policy "folders_update_editor" on public.folders
   for update to authenticated
   using (public.is_ws_member(workspace_id) and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor'))
-  with check (public.is_ws_member(workspace_id));
+  with check (
+    public.is_ws_member(workspace_id)
+    and (
+      parent_folder_id is null
+      or exists (
+        select 1 from public.folders pf
+        where pf.id = folders.parent_folder_id and pf.workspace_id = folders.workspace_id
+      )
+    )
+  );
+drop policy if exists "folders_delete_editor" on public.folders;
 create policy "folders_delete_editor" on public.folders
   for delete to authenticated
   using (public.is_ws_member(workspace_id) and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor'));
 
--- files: same model
+-- files: same model; containing folder must belong to the same workspace
+drop policy if exists "files_select_member" on public.files;
 create policy "files_select_member" on public.files
   for select to authenticated using (public.is_ws_member(workspace_id));
+drop policy if exists "files_insert_editor" on public.files;
 create policy "files_insert_editor" on public.files
   for insert to authenticated
   with check (
@@ -251,32 +387,56 @@ create policy "files_insert_editor" on public.files
     and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor')
     and uploaded_by = auth.uid()
     and mime_type = 'application/pdf'
+    and (
+      folder_id is null
+      or exists (
+        select 1 from public.folders pf
+        where pf.id = folder_id and pf.workspace_id = files.workspace_id
+      )
+    )
   );
+drop policy if exists "files_update_editor" on public.files;
 create policy "files_update_editor" on public.files
   for update to authenticated
   using (public.is_ws_member(workspace_id) and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor'))
-  with check (public.is_ws_member(workspace_id));
+  with check (
+    public.is_ws_member(workspace_id)
+    and (
+      folder_id is null
+      or exists (
+        select 1 from public.folders pf
+        where pf.id = files.folder_id and pf.workspace_id = files.workspace_id
+      )
+    )
+  );
+drop policy if exists "files_delete_editor" on public.files;
 create policy "files_delete_editor" on public.files
   for delete to authenticated
   using (public.is_ws_member(workspace_id) and coalesce(public.ws_role_of(workspace_id), 'viewer') in ('owner', 'editor'));
 
 -- stars: strictly personal
+drop policy if exists "stars_select_own" on public.stars;
 create policy "stars_select_own" on public.stars
   for select to authenticated using (user_id = auth.uid());
+drop policy if exists "stars_insert_own" on public.stars;
 create policy "stars_insert_own" on public.stars
   for insert to authenticated with check (user_id = auth.uid());
+drop policy if exists "stars_delete_own" on public.stars;
 create policy "stars_delete_own" on public.stars
   for delete to authenticated using (user_id = auth.uid());
 
--- activity: members read, members write their own entries
+-- activity: members read; writers are always the signed-in user (the
+-- user_id column defaults to auth.uid() and clients cannot spoof it)
+drop policy if exists "activity_select_member" on public.activity_logs;
 create policy "activity_select_member" on public.activity_logs
   for select to authenticated using (public.is_ws_member(workspace_id));
+drop policy if exists "activity_insert_member" on public.activity_logs;
 create policy "activity_insert_member" on public.activity_logs
   for insert to authenticated
   with check (public.is_ws_member(workspace_id) and user_id = auth.uid());
 
 -- ----------------------------------------------------------------------------
--- 6. Member directory + owner-only invites
+-- 7. Member directory + owner-only invites
 -- ----------------------------------------------------------------------------
 
 create or replace function public.get_workspace_members(ws uuid)
@@ -309,8 +469,9 @@ begin
 end;
 $$;
 
+-- Returns a JSON object: { "user_id": "...", "display_name": "..." }
 create or replace function public.invite_to_workspace(ws uuid, invite_email text)
-returns table (user_id uuid, display_name text)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
@@ -318,23 +479,29 @@ as $$
 declare
   target public.profiles%rowtype;
 begin
-  if public.ws_role_of(ws) <> 'owner' then
+  if public.ws_role_of(ws) is distinct from 'owner' then
     raise exception 'Only the workspace owner can add members.';
   end if;
 
-  select * into target from public.profiles p where lower(p.email) = lower(invite_email) limit 1;
+  select * into target from public.profiles p
+  where lower(p.email) = lower(trim(invite_email))
+  limit 1;
+
   if not found then
     raise exception 'No StudyVault account exists for that email yet — ask your friend to sign up first.';
   end if;
 
   if exists (select 1 from public.workspace_members m where m.workspace_id = ws and m.user_id = target.id) then
-    raise exception 'That user is already a member.';
+    raise exception 'That user is already a member of this workspace.';
   end if;
 
   insert into public.workspace_members (workspace_id, user_id, role)
   values (ws, target.id, 'editor');
 
-  return query select target.id, coalesce(target.display_name, target.email);
+  return jsonb_build_object(
+    'user_id', target.id,
+    'display_name', coalesce(target.display_name, target.email)
+  );
 end;
 $$;
 
@@ -342,7 +509,7 @@ grant execute on function public.get_workspace_members(uuid) to authenticated;
 grant execute on function public.invite_to_workspace(uuid, text) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 7. Trash helpers (run as definer; each re-checks membership + role)
+-- 8. Trash helpers (run as definer; each re-checks membership + role)
 -- ----------------------------------------------------------------------------
 
 create or replace function public.soft_delete_folder(fid uuid)
@@ -461,8 +628,15 @@ begin
     select f.id from public.folders f join subtree s on f.parent_folder_id = s.id
     where f.workspace_id = ws
   )
+  delete from public.files where folder_id in (select id from subtree);
+
+  with recursive subtree as (
+    select fid as id
+    union all
+    select f.id from public.folders f join subtree s on f.parent_folder_id = s.id
+    where f.workspace_id = ws
+  )
   delete from public.folders where id in (select id from subtree);
-  -- files are removed via ON DELETE CASCADE
 
   if paths is not null then
     delete from storage.objects
@@ -476,36 +650,40 @@ grant execute on function public.restore_folder(uuid) to authenticated;
 grant execute on function public.purge_folder(uuid) to authenticated;
 
 -- ----------------------------------------------------------------------------
--- 8. Private storage bucket + policies
+-- 9. Private storage bucket + policies
 -- ----------------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public)
 values ('studyvault', 'studyvault', false)
 on conflict (id) do update set public = false;
 
+drop policy if exists "storage_select_member" on storage.objects;
 create policy "storage_select_member" on storage.objects
   for select to authenticated
   using (bucket_id = 'studyvault' and public.can_access_storage_path(name));
 
-create policy "storage_insert_member" on storage.objects
+drop policy if exists "storage_insert_editor" on storage.objects;
+create policy "storage_insert_editor" on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'studyvault'
     and auth.uid() is not null
-    and public.can_access_storage_path(name)
-    and (storage.extension(name) = 'pdf' or lower(storage.extension(name)) = 'pdf')
+    and public.can_write_storage_path(name)
+    and lower(coalesce(storage.extension(name), '')) = 'pdf'
   );
 
-create policy "storage_update_member" on storage.objects
+drop policy if exists "storage_update_editor" on storage.objects;
+create policy "storage_update_editor" on storage.objects
   for update to authenticated
-  using (bucket_id = 'studyvault' and public.can_access_storage_path(name));
+  using (bucket_id = 'studyvault' and public.can_write_storage_path(name));
 
-create policy "storage_delete_member" on storage.objects
+drop policy if exists "storage_delete_editor" on storage.objects;
+create policy "storage_delete_editor" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'studyvault' and public.can_access_storage_path(name));
+  using (bucket_id = 'studyvault' and public.can_write_storage_path(name));
 
 -- ----------------------------------------------------------------------------
--- 9. Realtime: broadcast workspace changes to connected members
+-- 10. Realtime: broadcast workspace changes to connected members
 -- ----------------------------------------------------------------------------
 
 do $$

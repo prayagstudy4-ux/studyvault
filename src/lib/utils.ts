@@ -102,10 +102,19 @@ export function friendlyError(err: unknown, fallback: string): string {
     return "An item with that name already exists here.";
   if (msg.includes("failed to fetch") || msg.includes("network"))
     return "Network error. Please check your connection and try again.";
-  if (msg.includes("does not exist") || msg.includes("schema cache"))
+  if (msg.includes("signups not allowed") || msg.includes("signups are disabled") || msg.includes("signup is disabled"))
+    return "New sign-ups are disabled for this Supabase project. In the Supabase dashboard, open Authentication → Sign In / Up → Email and enable it.";
+  if (msg.includes("schema cache") || (msg.includes("could not find") && msg.includes("table")))
     return "The StudyVault database isn't set up yet. Run supabase/migrations/001_studyvault.sql in your Supabase SQL editor (see README), then try again.";
   if (msg.includes("not found")) return "This item no longer exists.";
-  return raw ? fallback : fallback;
+  // Human-readable messages raised by our database functions (invites,
+  // permission checks…) are shown verbatim; raw Postgres internals are not.
+  const looksInternal =
+    /(violates|constraint|syntax error|permission denied|pgrst|schema cache|does not exist|invalid input|unexpected|operator does not|function .* does not)/i;
+  if (raw && raw.length < 240 && !looksInternal.test(raw) && /[a-z]/i.test(raw)) {
+    return raw;
+  }
+  return fallback;
 }
 
 /** Build "Class 9 / Mathematics / Chapter 2" from a folder map. */

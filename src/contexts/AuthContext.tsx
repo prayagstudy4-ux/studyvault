@@ -4,12 +4,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { requireClient } from "../lib/supabase";
-import { getProfile, updateProfile } from "../services/db";
+import { ensureProfile, getProfile, updateProfile } from "../services/db";
+import { friendlyError } from "../lib/utils";
+import { useToast } from "./ToastContext";
 import type { UserProfile } from "../types";
 
 interface SignUpResult {
@@ -39,18 +42,33 @@ export function useAuth(): AuthContextValue {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { toast } = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [initializing, setInitializing] = useState(true);
+  const profileWarnedRef = useRef(false);
 
-  const loadProfile = useCallback(async (userId: string) => {
-    try {
-      const p = await getProfile(userId);
-      setProfile(p);
-    } catch {
-      setProfile(null);
-    }
-  }, []);
+  const loadProfile = useCallback(
+    async (userId: string) => {
+      try {
+        let p = await getProfile(userId);
+        // Self-heal: accounts created before the profile trigger get their
+        // row on first sign-in instead of breaking the whole app.
+        if (!p) p = await ensureProfile();
+        profileWarnedRef.current = false;
+        setProfile(p);
+      } catch (err) {
+        // Log real details for development, warn the user once.
+        console.error("[StudyVault] profile load failed:", err);
+        setProfile(null);
+        if (!profileWarnedRef.current) {
+          profileWarnedRef.current = true;
+          toast(friendlyError(err, "Your profile could not be loaded."), "error");
+        }
+      }
+    },
+    [toast]
+  );
 
   useEffect(() => {
     const sb = requireClient();

@@ -69,9 +69,16 @@ back to fake data.
    - a `handle_new_user` trigger that creates a profile row on signup
    - **RLS enabled on every table with membership-scoped policies** (no `using (true)` anywhere)
    - the **private** `studyvault` storage bucket + member-scoped storage policies
-   - definer functions: `is_ws_member`, `ws_role_of`, `get_workspace_members`,
-     `invite_to_workspace`, `soft_delete_folder`, `restore_folder`, `purge_folder`
+   - definer functions: `is_ws_member`, `ws_role_of`, `create_workspace` (atomic
+     workspace + owner membership), `ensure_profile` (self-heals missing profiles),
+     `get_workspace_members`, `invite_to_workspace`, `soft_delete_folder`,
+     `restore_folder`, `purge_folder`, storage-path checkers
    - the Realtime publication for `folders`, `files`, `activity_logs`
+   - a one-time **backfill** that creates profile rows for users who already
+     exist in `auth.users` (no duplicates — `ON CONFLICT (id) DO NOTHING`)
+
+   The migration is **idempotent** — if you already ran an older copy, paste this
+   version and run it again; it upgrades policies/functions without breaking data.
 3. **Storage bucket check.** Storage → you should see a private bucket named `studyvault`.
    (The migration creates it; verify `Public bucket` is off.)
 4. **Enable email auth.** Authentication → Providers → Email: enabled. For a two-person vault,
@@ -86,6 +93,16 @@ back to fake data.
 8. **Invite the friend.** Prayag: Settings → Workspace → Invite, enter the friend's email.
    The friend signs in and immediately sees "Our Notes". (The invite RPC checks owner role
    server-side.)
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `404` on `/rest/v1/profiles`, `/rest/v1/workspaces`, or "Could not find the table … in the schema cache" | The migration was never run on this project | Paste `supabase/migrations/001_studyvault.sql` into the SQL Editor and run it (safe to re-run) |
+| Sign-up fails with `401` and no clear message | New sign-ups are disabled for the project | Supabase dashboard → **Authentication → Sign In / Up → Email** → enable the provider (and "Enable email confirmations" only if you want the confirm step) |
+| Sign-up succeeds but nothing happens | Email confirmation is on | Open the confirmation email, click the link, then sign in |
+| "Your profile could not be loaded." | Profile row missing | The app auto-creates it on the next sign-in via `ensure_profile()`; if it persists, re-run the migration (it backfills old users) |
+| Old user can't be invited ("No StudyVault account exists…") | They signed up before the migration | Have them sign in once (self-heals the profile), then invite again |
 
 ## Local development
 

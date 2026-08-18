@@ -23,6 +23,17 @@ export async function getProfile(userId: string): Promise<UserProfile | null> {
   return data as UserProfile | null;
 }
 
+/**
+ * Returns the caller's profile, creating it server-side if it is missing
+ * (covers accounts created before the profile trigger existed).
+ */
+export async function ensureProfile(): Promise<UserProfile> {
+  const sb = requireClient();
+  const { data, error } = await sb.rpc("ensure_profile");
+  if (error) throw error;
+  return data as UserProfile;
+}
+
 export async function updateProfile(
   userId: string,
   patch: { display_name?: string; avatar_url?: string }
@@ -52,24 +63,18 @@ export async function getMyWorkspaces(): Promise<Workspace[]> {
   return (data ?? []) as Workspace[];
 }
 
+/**
+ * Creates the workspace AND the owner membership in one atomic, server-side
+ * transaction — a workspace can never exist without its owner row.
+ */
 export async function createWorkspace(name: string, description: string): Promise<Workspace> {
   const sb = requireClient();
-  const {
-    data: { user },
-  } = await sb.auth.getUser();
-  if (!user) throw new Error("You must be signed in to create a workspace.");
-  const { data, error } = await sb
-    .from("workspaces")
-    .insert({ name, description })
-    .select()
-    .single();
+  const { data, error } = await sb.rpc("create_workspace", {
+    ws_name: name,
+    ws_description: description,
+  });
   if (error) throw error;
-  const ws = data as Workspace;
-  const { error: memberError } = await sb
-    .from("workspace_members")
-    .insert({ workspace_id: ws.id, user_id: user.id, role: "owner" });
-  if (memberError) throw memberError;
-  return ws;
+  return data as Workspace;
 }
 
 export async function updateWorkspaceName(id: string, name: string): Promise<void> {

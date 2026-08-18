@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   Clock,
   FileText,
   Folder,
@@ -10,6 +11,7 @@ import {
   LogOut,
   Menu as MenuIcon,
   Moon,
+  RefreshCw,
   Search,
   Settings,
   Star,
@@ -265,7 +267,7 @@ function SidebarContent({ workspaceId, currentFolderId, onNavigate }: { workspac
 /* ------------------------------------------------------------ shell */
 export function AppLayout() {
   const { profile, user, signOut } = useAuth();
-  const { workspace } = useWorkspace();
+  const { workspace, error: wsError, refresh } = useWorkspace();
   const { isDark, setMode } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -369,6 +371,23 @@ export function AppLayout() {
           ) : null}
         </div>
       </header>
+
+      {wsError ? (
+        <div
+          role="alert"
+          className="flex items-center gap-3 border-b border-danger-500/25 bg-danger-500/10 px-4 py-2.5 text-[13px] font-medium text-danger-600 dark:text-[#f0a2a2]"
+        >
+          <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+          <span className="min-w-0 flex-1">{wsError}</span>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="flex shrink-0 items-center gap-1.5 rounded-md border border-danger-500/30 px-2.5 py-1 text-[12px] font-bold transition-colors hover:bg-danger-500/10"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1">
         {/* desktop sidebar */}

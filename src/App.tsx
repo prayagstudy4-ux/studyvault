@@ -62,7 +62,7 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <HashRouter>
+          <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <Routes>
               <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
               <Route path="/signup" element={<GuestOnly><SignupPage /></GuestOnly>} />
