@@ -134,6 +134,10 @@ export interface AIRequest {
   class_level: AIClassLevel;
   conversation_id?: string;
   image_url?: string;
+  image_data?: {
+    mime_type: string;
+    data: string;
+  };
 }
 
 export interface AIResponse {

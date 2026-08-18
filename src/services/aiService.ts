@@ -1,7 +1,7 @@
 import { requireClient } from "../lib/supabase";
 import type { AIConversation, AIMessage, AISubject, AIClassLevel, AIResponse } from "../types";
 
-const EDGE_FUNCTION_URL = "/functions/v1/ai-doubt-solver";
+const EDGE_FUNCTION_URL = "/ai-doubt-solver";
 
 /**
  * Get the Supabase project URL from environment.
@@ -23,7 +23,8 @@ export async function askAI(
   subject: AISubject,
   classLevel: AIClassLevel,
   conversationId?: string,
-  imageUrl?: string
+  imageUrl?: string,
+  imageData?: { mime_type: string; data: string }
 ): Promise<AIResponse> {
   const sb = requireClient();
   const {
@@ -38,19 +39,27 @@ export async function askAI(
   const supabaseUrl = getSupabaseUrl();
   const functionsUrl = `${supabaseUrl}/functions/v1`;
 
+  const requestBody: any = {
+    message,
+    subject,
+    class_level: classLevel,
+    conversation_id: conversationId,
+  };
+
+  // Only include image_url if we don't have image_data (image_data is preferred)
+  if (imageData) {
+    requestBody.image_data = imageData;
+  } else if (imageUrl) {
+    requestBody.image_url = imageUrl;
+  }
+
   const response = await fetch(`${functionsUrl}${EDGE_FUNCTION_URL}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: JSON.stringify({
-      message,
-      subject,
-      class_level: classLevel,
-      conversation_id: conversationId,
-      image_url: imageUrl,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -219,4 +228,23 @@ export async function uploadAIImage(file: File): Promise<string> {
   } = sb.storage.from("studyvault").getPublicUrl(storagePath);
 
   return publicUrl;
+}
+
+/**
+ * Convert an image file to base64 for sending to the Edge Function.
+ */
+export async function imageToBase64(file: File): Promise<{ mime_type: string; data: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64Data = result.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+      resolve({
+        mime_type: file.type || 'image/jpeg',
+        data: base64Data,
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
