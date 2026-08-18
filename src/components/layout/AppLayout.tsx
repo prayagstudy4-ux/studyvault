@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
+  Bot,
   Clock,
   FileText,
   Folder,
@@ -213,6 +214,7 @@ function StorageMeter() {
 /* ------------------------------------------------------------ nav */
 const NAV = [
   { to: "/dashboard", label: "Home", icon: Home, end: true },
+  { to: "/ai", label: "AI Doubt Solver", icon: Bot },
   { to: "/starred", label: "Starred", icon: Star },
   { to: "/recent", label: "Recent", icon: Clock },
   { to: "/trash", label: "Trash", icon: Trash2 },

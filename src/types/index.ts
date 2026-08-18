@@ -99,3 +99,44 @@ export interface UploadProgress {
   percent: number;
   phase: "uploading" | "done" | "error";
 }
+
+/* ------------------------------------------------------------------ */
+/* AI Doubt Solver                                                     */
+/* ------------------------------------------------------------------ */
+
+export type AISubject = "mathematics" | "science" | "social_science" | "english" | "hindi" | "computer" | "general";
+export type AIClassLevel = "class_9" | "general";
+export type AIMessageRole = "user" | "assistant";
+
+export interface AIConversation {
+  id: string;
+  user_id: string;
+  title: string;
+  subject: AISubject;
+  class_level: AIClassLevel;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: AIMessageRole;
+  content: string;
+  image_url: string | null;
+  created_at: string;
+}
+
+export interface AIRequest {
+  message: string;
+  subject: AISubject;
+  class_level: AIClassLevel;
+  conversation_id?: string;
+  image_url?: string;
+}
+
+export interface AIResponse {
+  response: string;
+  conversation_id: string;
+}
