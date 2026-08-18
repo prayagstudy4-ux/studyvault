@@ -1,1 +1,136 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Orbitron", "Space Grotesk", ui-sans-serif, sans-serif;
+  --font-body: "Space Grotesk", "Trebuchet MS", ui-sans-serif, sans-serif;
+
+  --color-space-100: #e9edf8;
+  --color-space-200: #c2cbdf;
+  --color-space-300: #8d9bbd;
+  --color-space-400: #64749b;
+  --color-space-500: #3a4d75;
+  --color-space-600: #233252;
+  --color-space-700: #16223f;
+  --color-space-800: #0d152c;
+  --color-space-850: #0a1124;
+  --color-space-900: #060b1c;
+  --color-space-950: #030611;
+
+  --color-solar-300: #ffe29a;
+  --color-solar-400: #ffd061;
+  --color-solar-500: #f5b83d;
+  --color-solar-600: #d99a21;
+
+  --color-nebula-400: #57d7c8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-space-950);
+  color: var(--color-space-100);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(245, 184, 61, 0.35);
+  color: #fff7dd;
+}
+
+/* slim scrollbar for the data panel */
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: #233252;
+  border-radius: 4px;
+}
+.scroll-slim::-webkit-scrollbar-thumb:hover {
+  background: #3a4d75;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* HUD corner brackets */
+.frame-corners {
+  position: relative;
+}
+.frame-corners::before,
+.frame-corners::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+}
+.frame-corners::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--color-solar-500);
+  border-left: 2px solid var(--color-solar-500);
+}
+.frame-corners::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--color-solar-500);
+  border-right: 2px solid var(--color-solar-500);
+}
+
+@keyframes hud-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-hud-in {
+  animation: hud-in 0.65s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+
+@keyframes blink-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.65);
+  }
+}
+.anim-blink {
+  animation: blink-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes spin-slow-kf {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.anim-spin-slow {
+  animation: spin-slow-kf 28s linear infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-hud-in,
+  .anim-blink,
+  .anim-spin-slow {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+}
