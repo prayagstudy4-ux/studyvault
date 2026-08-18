@@ -33,6 +33,10 @@ interface RequestBody {
   class_level: string;
   conversation_id?: string;
   image_url?: string;
+  image_data?: {
+    mime_type: string;
+    data: string;
+  };
 }
 
 serve(async (req: Request) => {
@@ -76,7 +80,7 @@ serve(async (req: Request) => {
 
     // Parse request body
     const body: RequestBody = await req.json();
-    const { message, subject, class_level, conversation_id, image_url } = body;
+    const { message, subject, class_level, conversation_id, image_url, image_data } = body;
 
     // Validate input
     if (!message || message.trim().length === 0) {
@@ -137,22 +141,56 @@ serve(async (req: Request) => {
       }
     }
 
-    // Build the prompt for Gemini
-    const userContent = image_url
-      ? `Question: ${message}\n\n[Image provided: ${image_url}]`
-      : message;
+    // Build the user content parts array
+    const userContentParts: Array<{ text?: string; inline_data?: { mime_type: string; data: string } }> = [];
+    
+    // Add the text question
+    userContentParts.push({ text: `Student's question: ${message}` });
+    
+    // Add image if provided via image_data (preferred method)
+    if (image_data && image_data.data) {
+      userContentParts.push({
+        inline_data: {
+          mime_type: image_data.mime_type || "image/jpeg",
+          data: image_data.data,
+        },
+      });
+    } else if (image_url) {
+      // Fallback: fetch image from URL and convert to base64
+      try {
+        const imageResponse = await fetch(image_url);
+        if (imageResponse.ok) {
+          const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+          const arrayBuffer = await imageResponse.arrayBuffer();
+          const base64Data = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+          userContentParts.push({
+            inline_data: {
+              mime_type: contentType,
+              data: base64Data,
+            },
+          });
+        }
+      } catch (imgErr) {
+        console.warn("Failed to fetch image from URL:", imgErr);
+        // Continue without image if fetch fails
+      }
+    }
 
-    // Call Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+    // Call Gemini API using the official format
+    // Using gemini-1.5-flash as it's stable and supports multimodal input
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
     const geminiPayload = {
       contents: [
         {
           role: "user",
-          parts: [{ text: systemPrompt + "\n\nStudent's question: " + userContent }],
+          parts: userContentParts,
         },
         ...conversationHistory,
       ],
+      systemInstruction: {
+        parts: [{ text: systemPrompt }],
+      },
       generationConfig: {
         temperature: 0.7,
         topK: 40,
@@ -185,6 +223,7 @@ serve(async (req: Request) => {
     if (geminiData.candidates && geminiData.candidates[0]?.content?.parts) {
       aiResponse = geminiData.candidates[0].content.parts
         .map((p: { text?: string }) => p.text)
+        .filter(Boolean)
         .join("\n");
     }
 

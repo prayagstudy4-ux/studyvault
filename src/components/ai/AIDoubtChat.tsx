@@ -24,6 +24,7 @@ import {
   addAssistantMessage,
   askAI,
   uploadAIImage,
+  imageToBase64,
 } from "../../services/aiService";
 import { AIMessageBubble, AIDisclaimer, LoadingIndicator } from "./AIMessage";
 
@@ -131,7 +132,6 @@ export function AIDoubtSolverPage() {
       setError("Failed to delete conversation.");
     }
   }
-
   async function sendMessage(actionType?: string) {
     if (!inputValue.trim() && !imageFile) return;
     if (isLoading) return;
@@ -141,12 +141,16 @@ export function AIDoubtSolverPage() {
 
     let currentConversation = selectedConversation;
     let imageUrl: string | undefined;
+    let imageData: { mime_type: string; data: string } | undefined;
 
     try {
-      // Upload image if present
+      // Convert image to base64 if present (preferred method for Gemini)
       if (imageFile) {
         setIsUploading(true);
+        // Also upload to storage for persistence in database
         imageUrl = await uploadAIImage(imageFile);
+        // Convert to base64 for sending to Gemini
+        imageData = await imageToBase64(imageFile);
         setIsUploading(false);
       }
 
@@ -162,13 +166,14 @@ export function AIDoubtSolverPage() {
       const userMsg = await addUserMessage(currentConversation.id, inputValue.trim(), imageUrl);
       setMessages((prev) => [...prev, userMsg]);
 
-      // Get AI response
+      // Get AI response - pass image_data instead of just image_url
       const aiResponse = await askAI(
         actionType ? `${actionType}: ${inputValue.trim()}` : inputValue.trim(),
         selectedSubject,
         selectedClass,
         currentConversation.id,
-        imageUrl
+        imageUrl,
+        imageData
       );
 
       // Add assistant message
@@ -194,6 +199,7 @@ export function AIDoubtSolverPage() {
       setIsLoading(false);
       setIsUploading(false);
     }
+  }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
