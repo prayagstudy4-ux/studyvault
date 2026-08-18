@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BUCKET_ID, requireClient } from "../lib/supabase";
-import { MAX_PDF_BYTES, isPdfFile, sanitizeName, uniqueName } from "../lib/utils";
+import { MAX_PDF_BYTES, isPdfFile, sanitizeName, toStorageFileName, uniqueName } from "../lib/utils";
 import { insertFileRow, removeFileRow } from "./db";
 import type { FileItem } from "../types";
 
@@ -46,10 +46,19 @@ function uploadWithProgress(
             let message = "Unable to upload the PDF. Please check your connection and try again.";
             try {
               const parsed = JSON.parse(xhr.responseText) as { message?: string; statusCode?: string };
-              if (parsed.statusCode === "413" || /size/i.test(parsed.message ?? "")) {
+              const raw = parsed.message ?? "";
+              if (parsed.statusCode === "413" || /size/i.test(raw)) {
                 message = "This file is too large. Maximum allowed size is 50 MB.";
-              } else if (parsed.message) {
-                message = parsed.message;
+              } else if (/invalid key/i.test(raw)) {
+                message =
+                  "Supabase Storage rejected that file name. Rename the PDF using letters, numbers and spaces, then try again.";
+              } else if (/bucket not found/i.test(raw)) {
+                message =
+                  "The private 'studyvault' bucket is missing — run the SQL migration in the Supabase SQL editor (see README).";
+              } else if (/row-level security|policy/i.test(raw)) {
+                message = "You do not have permission to upload to this workspace.";
+              } else if (raw) {
+                message = raw;
               }
             } catch {
               /* keep default */
@@ -90,11 +99,19 @@ export async function uploadPdf(
     throw new UploadError("That file is empty — nothing to upload.");
   }
 
+  // The file UUID is generated first so every upload lands at a unique path.
   const fileId = crypto.randomUUID();
+  // Display name — kept verbatim for the database and UI (spaces, em dash, etc.).
   const name = uniqueName(sanitizeName(file.name.replace(/\.pdf$/i, "")) + ".pdf", existingNames);
-  const storagePath = `${workspaceId}/${folderId ?? "root"}/${fileId}/${name}`;
+  // Storage object name — strict slug. Supabase Storage rejects keys containing
+  // Unicode punctuation ("—", "(", "&", …) with "Invalid key", so the object is
+  // stored under a safe name while `files.name` keeps the original.
+  const storageName = toStorageFileName(name);
+  const storagePath = `${workspaceId}/${folderId ?? "root"}/${fileId}/${storageName}`;
 
   // Register metadata first so the row exists even if the UI is closed mid-upload.
+  // `storage_path` stores the EXACT key uploaded below — downloads, previews and
+  // deletes all read this same column.
   const row = await insertFileRow({
     id: fileId,
     workspace_id: workspaceId,

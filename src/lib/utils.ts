@@ -66,9 +66,46 @@ export function isPdfFile(file: File): boolean {
   return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
 }
 
-/** Strip path separators so a display name can never smuggle a traversal into storage paths. */
+/** Strip control chars and path separators so display names stay safe and honest. */
 export function sanitizeName(name: string): string {
-  return name.replace(/[/\\]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 180) || "Untitled";
+  return (
+    name
+      .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
+      .replace(/[/\\]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^\.+|\.+$/g, "")
+      .slice(0, 180) || "Untitled"
+  );
+}
+
+/**
+ * Convert an arbitrary display filename into a Supabase-Storage-safe object name.
+ * Storage only accepts letters, numbers and `- _ . /`, so Unicode punctuation
+ * (em dash "—", brackets, "&", …) makes the upload fail with "Invalid key".
+ * The original display name stored in the database is untouched by this.
+ *
+ *   "Indian Political Science — Detailed Notes2.pdf"
+ *     → "Indian-Political-Science-Detailed-Notes2.pdf"
+ */
+export function toStorageFileName(name: string): string {
+  const dot = name.lastIndexOf(".");
+  const baseRaw = dot > 0 ? name.slice(0, dot) : name;
+  const extRaw = dot > 0 ? name.slice(dot) : "";
+
+  const clean = (part: string) =>
+    part
+      .normalize("NFKD") // é → e + combining accent
+      .replace(/[\u0300-\u036f]/g, "") // drop combining accents
+      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\ufeff]/g, "") // control + zero-width chars
+      .replace(/\s+/g, "-") // whitespace → dash
+      .replace(/[^\p{L}\p{N}._-]/gu, "-") // punctuation, em dash, "&" → dash
+      .replace(/-{2,}/g, "-") // collapse repeated dashes
+      .replace(/^[-.]+|[-.]+$/g, ""); // trim leading/trailing dashes and dots
+
+  const base = clean(baseRaw) || "notes";
+  const ext = clean(extRaw.replace(/^\.+/, "")) || "pdf";
+  return `${base}.${ext}`;
 }
 
 /** Append " (2)", " (3)"… until the name is unique within `existing`. */
