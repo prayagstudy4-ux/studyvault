@@ -1,4 +1,4 @@
-```
+```gitignore
 # Dependencies
 node_modules/
 
@@ -7,22 +7,7 @@ dist/
 build/
 target/
 
-# Environment variables
-.env
-.env.local
-.env.*
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Logs
-*.log
-
-# Python specific
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -34,42 +19,40 @@ venv/
 .venv.bak/
 pip-log.txt
 pip-delete-this-directory.txt
-*.so
-.Python
-*.egg-info/
-.eggs/
-.coverage
-htmlcov/
 .tox/
-.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+*.sublime-workspace
 .pytest_cache/
 .mypy_cache/
+.hypothesis/
 
-# Node.js specific
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-node_modules/
-dist/
-build/
-coverage/
-.nyc_output/
-.next/
-.nuxt/
-public/dist/
-*.min.js
-*.min.css
+# Environment variables
+.env
+.env.local
+.env.*
 
-# Supabase specific
-.supabase/
-**/supabase/.temp/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
 
-# OS generated files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+htmlcov/
 ```
