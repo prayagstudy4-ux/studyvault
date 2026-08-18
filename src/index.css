@@ -1,27 +1,46 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-display: "Orbitron", "Space Grotesk", ui-sans-serif, sans-serif;
-  --font-body: "Space Grotesk", "Trebuchet MS", ui-sans-serif, sans-serif;
+  --font-display: "Bricolage Grotesque", "Instrument Sans", ui-sans-serif, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
 
-  --color-space-100: #e9edf8;
-  --color-space-200: #c2cbdf;
-  --color-space-300: #8d9bbd;
-  --color-space-400: #64749b;
-  --color-space-500: #3a4d75;
-  --color-space-600: #233252;
-  --color-space-700: #16223f;
-  --color-space-800: #0d152c;
-  --color-space-850: #0a1124;
-  --color-space-900: #060b1c;
-  --color-space-950: #030611;
+  /* neutrals */
+  --color-ink-50: #f6f7fb;
+  --color-ink-100: #eef0f6;
+  --color-ink-150: #e6e9f1;
+  --color-ink-200: #dde1ec;
+  --color-ink-300: #c3c9db;
+  --color-ink-400: #98a1b9;
+  --color-ink-500: #6d7690;
+  --color-ink-600: #4d5568;
+  --color-ink-700: #363d4e;
+  --color-ink-800: #232837;
+  --color-ink-850: #1a1e2a;
+  --color-ink-900: #131620;
+  --color-ink-950: #0b0d14;
 
-  --color-solar-300: #ffe29a;
-  --color-solar-400: #ffd061;
-  --color-solar-500: #f5b83d;
-  --color-solar-600: #d99a21;
+  /* brand (indigo-blue) */
+  --color-brand-50: #eef0ff;
+  --color-brand-100: #e0e4ff;
+  --color-brand-200: #c7cdff;
+  --color-brand-300: #a5aefc;
+  --color-brand-400: #7f89f4;
+  --color-brand-500: #5f68ec;
+  --color-brand-600: #4f5be7;
+  --color-brand-700: #4048c8;
+  --color-brand-800: #333aa0;
+  --color-brand-900: #2a2f7c;
 
-  --color-nebula-400: #57d7c8;
+  --color-star-400: #f0b429;
+  --color-ok-500: #2e9e6b;
+  --color-warn-500: #d97706;
+  --color-danger-500: #dc4b4b;
+  --color-danger-600: #c53a3a;
+
+  --shadow-card: 0 1px 2px rgb(19 22 32 / 0.05), 0 8px 24px -12px rgb(19 22 32 / 0.12);
+  --shadow-pop: 0 4px 10px rgb(11 13 20 / 0.08), 0 20px 48px -16px rgb(11 13 20 / 0.28);
 }
 
 html,
@@ -32,100 +51,128 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-space-950);
-  color: var(--color-space-100);
-  font-family: var(--font-body);
+  font-family: var(--font-sans);
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.dark body {
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
 }
 
 ::selection {
-  background: rgba(245, 184, 61, 0.35);
-  color: #fff7dd;
+  background: color-mix(in srgb, var(--color-brand-500) 28%, transparent);
 }
 
-/* slim scrollbar for the data panel */
-.scroll-slim::-webkit-scrollbar {
-  width: 8px;
-}
-.scroll-slim::-webkit-scrollbar-thumb {
-  background: #233252;
+*:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
   border-radius: 4px;
 }
-.scroll-slim::-webkit-scrollbar-thumb:hover {
-  background: #3a4d75;
+
+/* scrollbars */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
-.scroll-slim::-webkit-scrollbar-track {
+*::-webkit-scrollbar-thumb {
+  background: var(--color-ink-300);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* HUD corner brackets */
-.frame-corners {
-  position: relative;
-}
-.frame-corners::before,
-.frame-corners::after {
-  content: "";
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  pointer-events: none;
-}
-.frame-corners::before {
-  top: -1px;
-  left: -1px;
-  border-top: 2px solid var(--color-solar-500);
-  border-left: 2px solid var(--color-solar-500);
-}
-.frame-corners::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 2px solid var(--color-solar-500);
-  border-right: 2px solid var(--color-solar-500);
-}
-
-@keyframes hud-in {
+@keyframes sv-fade-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
-.anim-hud-in {
-  animation: hud-in 0.65s cubic-bezier(0.22, 0.9, 0.3, 1) both;
-}
-
-@keyframes blink-dot {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
+@keyframes sv-fade {
+  from {
+    opacity: 0;
   }
-  50% {
-    opacity: 0.3;
-    transform: scale(0.65);
-  }
-}
-.anim-blink {
-  animation: blink-dot 1.6s ease-in-out infinite;
-}
-
-@keyframes spin-slow-kf {
   to {
-    transform: rotate(360deg);
+    opacity: 1;
   }
 }
-.anim-spin-slow {
-  animation: spin-slow-kf 28s linear infinite;
-  transform-origin: center;
+@keyframes sv-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sv-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sv-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.anim-fade-up {
+  animation: sv-fade-up 0.3s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.anim-fade {
+  animation: sv-fade 0.2s ease both;
+}
+.anim-pop {
+  animation: sv-pop 0.22s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.anim-toast {
+  animation: sv-toast-in 0.25s cubic-bezier(0.22, 0.9, 0.3, 1) both;
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-ink-150) 25%,
+    var(--color-ink-100) 50%,
+    var(--color-ink-150) 75%
+  );
+  background-size: 800px 100%;
+  animation: sv-shimmer 1.4s linear infinite;
+}
+.dark .skeleton {
+  background: linear-gradient(90deg, #1a1e2a 25%, #232837 50%, #1a1e2a 75%);
+  background-size: 800px 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-hud-in,
-  .anim-blink,
-  .anim-spin-slow {
+  .anim-fade-up,
+  .anim-fade,
+  .anim-pop,
+  .anim-toast,
+  .skeleton {
     animation: none;
   }
   *,
