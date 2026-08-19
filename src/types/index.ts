@@ -53,6 +53,8 @@ export interface FileItem {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  drive_file_id?: string | null;
+  drive_folder_id?: string | null;
 }
 
 export interface Star {
