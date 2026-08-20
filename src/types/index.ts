@@ -146,3 +146,37 @@ export interface AIResponse {
   response: string;
   conversation_id: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* AI Notes                                                            */
+/* ------------------------------------------------------------------ */
+
+export type AINoteFormat = "structured" | "revision" | "flashcards";
+export type AINoteSourceType = "topic" | "text" | "file";
+
+export interface AINote {
+  id: string;
+  workspace_id: string;
+  created_by: string;
+  title: string;
+  content: string;
+  format: AINoteFormat;
+  source_type: AINoteSourceType;
+  source_text: string | null;
+  source_file_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GenerateAINoteRequest {
+  workspace_id: string;
+  format: AINoteFormat;
+  source_type: AINoteSourceType;
+  source_text?: string;
+  source_file_id?: string;
+}
+
+export interface GenerateAINoteResponse {
+  title: string;
+  content: string;
+}

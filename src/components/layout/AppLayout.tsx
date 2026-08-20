@@ -222,13 +222,17 @@ const NAV = [
 ];
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const { workspace } = useWorkspace();
+  const navItems = workspace
+    ? [...NAV.slice(0, 2), { to: `/workspace/${workspace.id}/ai-notes`, label: "AI Notes", icon: FileText }, ...NAV.slice(2)]
+    : NAV;
   return (
     <nav className="space-y-0.5" aria-label="Primary">
-      {NAV.map((item) => (
+      {navItems.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
-          end={item.end}
+          end={"end" in item ? item.end : undefined}
           onClick={onNavigate}
           className={({ isActive }) =>
             cn(
@@ -434,11 +438,11 @@ export function AppLayout() {
         className="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t border-ink-200 bg-ink-50/97 py-1.5 backdrop-blur-sm lg:hidden dark:border-ink-800 dark:bg-ink-950/97"
         style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}
       >
-        {NAV.map((item) => (
+        {(workspace ? [...NAV.slice(0, 2), { to: `/workspace/${workspace.id}/ai-notes`, label: "AI Notes", icon: FileText }, ...NAV.slice(2)] : NAV).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.end}
+            end={"end" in item ? item.end : undefined}
             className={({ isActive }) =>
               cn(
                 "flex min-w-15 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-[10px] font-semibold transition-colors",
