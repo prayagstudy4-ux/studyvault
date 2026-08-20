@@ -3,6 +3,7 @@
 | File | Purpose | When to run |
 |---|---|---|
 | `migrations/001_studyvault.sql` | Creates all tables, indexes, RLS policies, security-definer functions, the private `studyvault` storage bucket with member-scoped policies, and the Realtime publication. Also backfills profile rows for pre-existing users. | **Once**, right after creating the project (SQL Editor → paste → Run). **Idempotent — safe to re-run** to upgrade an older copy. |
+| `migrations/004_ai_notes.sql` | Creates shared workspace AI Notes, member-scoped RLS policies, and the internal generation rate-limit log. | After `001_studyvault.sql`, before deploying `ai-notes`. |
 | `seed.sql` | Optional: creates the "Our Notes" workspace with the Class 9 folder skeleton for the first user. | After the first user exists in Authentication. Edit `OWNER_EMAIL` at the top first. Skip it if you prefer creating the workspace from the dashboard. |
 
 ## What the migration creates
@@ -52,6 +53,9 @@ insert/update/delete for owner/editor only, PDF extension enforced in policy.
 
 - Never add the `service_role` key to the frontend — the anon key + RLS is the
   entire security model, by design.
+- The `ai-notes` Edge Function uses `SUPABASE_SERVICE_ROLE_KEY` only server-side
+  to write its private rate-limit log. Supabase supplies this secret to deployed
+  Edge Functions; do not add it to a browser environment file.
 - If you ran an **older** copy of the migration: paste the current file and run
   it again. Policies are dropped and recreated, functions replaced, tables and
   indexes left untouched, and any missing profile rows are backfilled.

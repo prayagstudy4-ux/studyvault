@@ -15,6 +15,7 @@ import { FileViewerPage } from "./pages/FileViewerPage";
 import { RecentPage, StarredPage, TrashPage } from "./pages/Collections";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AIDoubtSolverPage } from "./components/ai/AIDoubtChat";
+import { AINotesPage } from "./pages/AINotesPage";
 
 function FullScreenLoader({ label }: { label: string }) {
   return (
@@ -85,6 +86,7 @@ export default function App() {
                 <Route path="/trash" element={<TrashPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/ai" element={<AIDoubtSolverPage />} />
+                <Route path="/workspace/:workspaceId/ai-notes" element={<AINotesPage />} />
               </Route>
 
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
