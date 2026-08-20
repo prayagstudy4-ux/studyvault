@@ -102,11 +102,14 @@ serve(async (req: Request) => {
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiApiKey) return error("AI service is not configured", 503);
     const prompt = `You are a careful educational note-making assistant. ${formatPrompt(body.format)} Use accurate, student-friendly language. Do not invent details not present in the source. Return only the Markdown note content, beginning with a level-one title.`;
-    const gemini = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+    const gemini = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ role: "user", parts }], systemInstruction: { parts: [{ text: prompt }] }, generationConfig: { temperature: 0.4, maxOutputTokens: 4096 } }),
     });
-    if (!gemini.ok) return error("AI service temporarily unavailable", 503);
+    if (!gemini.ok) {
+      console.error("Gemini API error", gemini.status, await gemini.text());
+      return error("AI service temporarily unavailable", 503);
+    }
     const result = await gemini.json();
     const content = result.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text ?? "").join("\n").trim();
     if (!content) return error("AI could not generate notes from that source.", 503);

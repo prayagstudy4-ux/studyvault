@@ -177,8 +177,8 @@ serve(async (req: Request) => {
     }
 
     // Call Gemini API using the official format
-    // Using gemini-1.5-flash as it's stable and supports multimodal input
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+    // Gemini 3.5 Flash is the supported multimodal Flash model.
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`;
 
     const geminiPayload = {
       contents: [
