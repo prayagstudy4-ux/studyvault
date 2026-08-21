@@ -1,29 +1,19 @@
 ```
+# Database migrations
+supabase/migrations/*.sql
+
 # Dependencies
 node_modules/
-
-# Environment variables
-.env.local
-.env.*
 
 # Build outputs
 dist/
 build/
 target/
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Logs
-*.log
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
+# Environment variables
+.env
+.env.local
+*.env.*
 
 # IDE files
 .vscode/
@@ -31,15 +21,54 @@ htmlcov/
 *.swp
 *.swo
 
-# OS files
-.DS_Store
-Thumbs.db
+# Logs
+*.log
 
 # Temporary files
 *.tmp
-*.temp
 
-# Local configuration
-.env
-.env.local
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+*.sublime-workspace
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+jspm_packages/
+typings/
+config.rb
+*.gem
+/.bundle/
+vendor/bundle/
+lib/bundler/man/
+*.orig
+*.bak
+*.swp
+*~
+.project
+.DS_Store
 ```
