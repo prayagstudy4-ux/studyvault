@@ -80,7 +80,7 @@ function Onboarding() {
   );
 }
 
-/* ------------------------------------------------ quick invite (owner, one member) */
+/* ------------------------------------------------ quick invite (owner, unlimited members) */
 function InviteNudge() {
   const { workspace, members, refresh } = useWorkspace();
   const { user } = useAuth();
@@ -91,7 +91,7 @@ function InviteNudge() {
   const [error, setError] = useState<string | null>(null);
 
   const me = members.find((m) => m.user_id === user?.id);
-  if (!workspace || me?.role !== "owner" || members.length >= 2) return null;
+  if (!workspace || me?.role !== "owner") return null;
 
   const send = async () => {
     setBusy(true);

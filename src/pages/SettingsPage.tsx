@@ -324,10 +324,10 @@ export function SettingsPage() {
               </ul>
             </div>
 
-            {isOwner && members.length < 2 ? (
+            {isOwner ? (
               <div className="rounded-lg border border-dashed border-ink-300 p-3.5 dark:border-ink-700">
                 <p className="mb-2 flex items-center gap-2 text-[13px] font-bold text-ink-800 dark:text-ink-100">
-                  <Users className="h-4 w-4 text-brand-500" /> Invite your study partner
+                  <Users className="h-4 w-4 text-brand-500" /> Invite members
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
